@@ -20,6 +20,10 @@ namespace pdf_service.Controllers
     {
         private readonly ILogger<PDFServiceController> _logger;
 
+        public PDFServiceController(ILogger<PDFServiceController> logger)
+        {
+            _logger = logger;
+        }
 
         [HttpPost("AddSignaturePlaceholder")]
         public IActionResult AddSignaturePlaceholder([FromForm]IFormFile? file, [FromForm]int? scale, [FromForm]string? signatures)
@@ -105,8 +109,6 @@ namespace pdf_service.Controllers
                 Stream pdfInStream = file.OpenReadStream();
                 PdfReader reader = new PdfReader(pdfInStream);
                 PdfWriter writer = new PdfWriter(pdfOutStream);
-                /*PdfDocument pdfDoc = new PdfDocument(reader, writer);*/
-                /*PdfAcroForm form = PdfAcroForm.GetAcroForm(pdfDoc, true);*/
 
                 PdfSigner signer = new PdfSigner(reader, pdfOutStream, new StampingProperties().UseAppendMode());
                 Pkcs12Store pk12 = new Pkcs12Store(new FileStream("D:\\Downloads\\nikko_tinio_signing_cert.p12", FileMode.Open, FileAccess.Read), "TIniosign08@^".ToCharArray());
@@ -128,22 +130,12 @@ namespace pdf_service.Controllers
                 }
 
                 IExternalSignature pks = new PrivateKeySignature(pk, DigestAlgorithms.SHA256);
-                ImageData signatureImage = ImageDataFactory.Create("D:\\Downloads\\sample_sig.bmp");
+                ImageData signatureImage = ImageDataFactory.Create("D:\\Downloads\\sample_sig.png");
 
                 if (signatureLocations != null)
                 {
                     foreach (SignatureLocation signatureLocation in signatureLocations)
                     {
-                        /*PdfFormField signatureField = PdfFormField.CreateSignature(pdfDoc, new Rectangle(signatureLocation.X,
-                            signatureLocation.Y, signatureLocation.Width, signatureLocation.Height));
-
-                        signatureField.SetFieldName(signatureLocation.SignatureName)
-                        .SetPage(signatureLocation.Page + 1)
-                        .SetFieldFlags(PdfAnnotation.PRINT);
-
-                        form.AddField(signatureField);*/
-
-
                         Rectangle rect = new Rectangle(signatureLocation.X, signatureLocation.Y, signatureLocation.Width, signatureLocation.Height);
                         PdfSignatureAppearance appearance = signer.GetSignatureAppearance();
 
@@ -170,6 +162,8 @@ namespace pdf_service.Controllers
             }
             catch (Exception e)
             {
+                _logger.LogError(e, "Error in signing PDF");
+
                 return StatusCode(500, e.Message);
             }
         }
