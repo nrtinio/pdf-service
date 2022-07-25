@@ -25,8 +25,8 @@ namespace pdf_service.Controllers
             _logger = logger;
         }
 
-        [HttpPost("AddSignaturePlaceholder")]
-        public IActionResult AddSignaturePlaceholder([FromForm]IFormFile? file, [FromForm]int? scale, [FromForm]string? signatures)
+        [HttpPost("AddSignatureField")]
+        public IActionResult AddSignatureField([FromForm]IFormFile? file, [FromForm]int? scale, [FromForm]string? signatures)
         {
             if(file == null)
             {
@@ -50,7 +50,7 @@ namespace pdf_service.Controllers
                 Stream pdfInStream = file.OpenReadStream();
                 PdfReader reader = new PdfReader(pdfInStream);
                 PdfWriter writer = new PdfWriter(pdfOutStream);
-                PdfDocument pdfDoc = new PdfDocument(reader, writer);
+                PdfDocument pdfDoc = new PdfDocument(reader, writer, new StampingProperties().UseAppendMode());
                 PdfAcroForm form = PdfAcroForm.GetAcroForm(pdfDoc, true);
 
                 if (signatureLocations != null)
@@ -79,6 +79,8 @@ namespace pdf_service.Controllers
             }
             catch (Exception e)
             {
+                _logger.LogError(e, "Error in Adding Siganture Field to PDF");
+
                 return StatusCode(500, e.Message);
             }
         }
@@ -130,7 +132,7 @@ namespace pdf_service.Controllers
                 }
 
                 IExternalSignature pks = new PrivateKeySignature(pk, DigestAlgorithms.SHA256);
-                ImageData signatureImage = ImageDataFactory.Create("D:\\Downloads\\sample_sig.png");
+                ImageData signatureImage = ImageDataFactory.Create("D:\\Downloads\\sample_sig.bmp");
 
                 if (signatureLocations != null)
                 {

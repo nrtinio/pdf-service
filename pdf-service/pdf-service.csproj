@@ -8,6 +8,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Views\**" />
+    <Content Remove="Views\**" />
+    <EmbeddedResource Remove="Views\**" />
+    <None Remove="Views\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <_WebToolingArtifacts Remove="Properties\PublishProfiles\IISLocal.pubxml" />
+    <_WebToolingArtifacts Remove="Properties\PublishProfiles\IISPackage.pubxml" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="itext7" Version="7.2.3" />
     <PackageReference Include="Microsoft.AspNetCore.Components.CustomElements" Version="7.0.0-preview.6.22330.3" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.3.2" />
