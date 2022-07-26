@@ -25,65 +25,65 @@ namespace pdf_service.Controllers
             _logger = logger;
         }
 
-        [HttpPost("AddSignatureField")]
-        public IActionResult AddSignatureField([FromForm]IFormFile? file, [FromForm]int? scale, [FromForm]string? signatures)
-        {
-            if(file == null)
-            {
-                return BadRequest();
-            }
+        // [HttpPost("AddSignatureField")]
+        // public IActionResult AddSignatureField([FromForm]IFormFile? file, [FromForm]int? scale, [FromForm]string? signatures)
+        // {
+        //     if(file == null)
+        //     {
+        //         return BadRequest();
+        //     }
 
-            if(scale == null)
-            {
-                return BadRequest();
-            }
+        //     if(scale == null)
+        //     {
+        //         return BadRequest();
+        //     }
 
-            if(signatures == null)
-            {
-                return BadRequest();
-            }
+        //     if(signatures == null)
+        //     {
+        //         return BadRequest();
+        //     }
 
-            try
-            {
-                SignatureLocation[] signatureLocations = JsonConvert.DeserializeObject<SignatureLocation[]>(signatures);
-                MemoryStream pdfOutStream = new MemoryStream();
-                Stream pdfInStream = file.OpenReadStream();
-                PdfReader reader = new PdfReader(pdfInStream);
-                PdfWriter writer = new PdfWriter(pdfOutStream);
-                PdfDocument pdfDoc = new PdfDocument(reader, writer, new StampingProperties().UseAppendMode());
-                PdfAcroForm form = PdfAcroForm.GetAcroForm(pdfDoc, true);
+        //     try
+        //     {
+        //         SignatureLocation[] signatureLocations = JsonConvert.DeserializeObject<SignatureLocation[]>(signatures);
+        //         MemoryStream pdfOutStream = new MemoryStream();
+        //         Stream pdfInStream = file.OpenReadStream();
+        //         PdfReader reader = new PdfReader(pdfInStream);
+        //         PdfWriter writer = new PdfWriter(pdfOutStream);
+        //         PdfDocument pdfDoc = new PdfDocument(reader, writer, new StampingProperties().UseAppendMode());
+        //         PdfAcroForm form = PdfAcroForm.GetAcroForm(pdfDoc, true);
 
-                if (signatureLocations != null)
-                {
-                    foreach (SignatureLocation signatureLocation in signatureLocations)
-                    {
-                        PdfFormField signatureField = PdfFormField.CreateSignature(pdfDoc, new Rectangle(signatureLocation.X,
-                            signatureLocation.Y, signatureLocation.Width, signatureLocation.Height));
+        //         if (signatureLocations != null)
+        //         {
+        //             foreach (SignatureLocation signatureLocation in signatureLocations)
+        //             {
+        //                 PdfFormField signatureField = PdfFormField.CreateSignature(pdfDoc, new Rectangle(signatureLocation.X,
+        //                     signatureLocation.Y, signatureLocation.Width, signatureLocation.Height));
 
-                        signatureField.SetFieldName(signatureLocation.SignatureName)
-                        .SetPage(signatureLocation.Page + 1)
-                        .SetFieldFlags(PdfAnnotation.PRINT);
+        //                 signatureField.SetFieldName(signatureLocation.SignatureName)
+        //                 .SetPage(signatureLocation.Page + 1)
+        //                 .SetFieldFlags(PdfAnnotation.PRINT);
 
-                        form.AddField(signatureField);
-                    }
-                } else
-                {
-                    return BadRequest();
-                }
+        //                 form.AddField(signatureField);
+        //             }
+        //         } else
+        //         {
+        //             return BadRequest();
+        //         }
 
-                pdfDoc.Close();
+        //         pdfDoc.Close();
 
-                byte[] pdfBytes = pdfOutStream.ToArray();
+        //         byte[] pdfBytes = pdfOutStream.ToArray();
 
-                return File(pdfBytes, "application/pdf", "result.pdf");
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, "Error in Adding Siganture Field to PDF");
+        //         return File(pdfBytes, "application/pdf", "result.pdf");
+        //     }
+        //     catch (Exception e)
+        //     {
+        //         _logger.LogError(e, "Error in Adding Siganture Field to PDF");
 
-                return StatusCode(500, e.Message);
-            }
-        }
+        //         return StatusCode(500, e.Message);
+        //     }
+        // }
 
 
         [HttpPost("SignPdf")]
@@ -122,7 +122,7 @@ namespace pdf_service.Controllers
 
             try
             {
-                SignatureLocation[] signatureLocations = JsonConvert.DeserializeObject<SignatureLocation[]>(signatures);
+                SignatureLocation[]? signatureLocations = JsonConvert.DeserializeObject<SignatureLocation[]>(signatures);
                 MemoryStream pdfOutStream = new MemoryStream();
                 Stream pdfInStream = file.OpenReadStream();
                 PdfReader reader = new PdfReader(pdfInStream);

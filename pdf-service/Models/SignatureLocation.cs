@@ -7,8 +7,5 @@
         public float Width { get; set; }
         public float Height { get; set; }
         public int Page { get; set; }
-
-        public string SignatureName { get; set; }
-
     }
 }
