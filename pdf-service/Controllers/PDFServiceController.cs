@@ -87,9 +87,25 @@ namespace pdf_service.Controllers
 
 
         [HttpPost("SignPdf")]
-        public IActionResult SignPdf([FromForm] IFormFile? file, [FromForm] int? scale, [FromForm] string? signatures)
+        public IActionResult SignPdf([FromForm] IFormFile? file, [FromForm] IFormFile? certificate, [FromForm] IFormFile? signatureImage,
+            [FromForm] string? certificatePassword, [FromForm] int? scale, [FromForm] string? signatures)
         {
             if (file == null)
+            {
+                return BadRequest("File missing");
+            }
+
+            if (certificate == null)
+            {
+                return BadRequest("File missing");
+            }
+
+            if (signatureImage == null)
+            {
+                return BadRequest("File missing");
+            }
+
+            if (certificatePassword == null)
             {
                 return BadRequest("File missing");
             }
@@ -112,9 +128,15 @@ namespace pdf_service.Controllers
                 PdfReader reader = new PdfReader(pdfInStream);
                 PdfWriter writer = new PdfWriter(pdfOutStream);
 
+                PdfDocument pdfDoc = new PdfDocument(reader, writer);
+                SignatureUtil signatureUtil = new SignatureUtil(pdfDoc);
+                int existingSignatureCount = 0;
+
+                existingSignatureCount = signatureUtil.GetSignatureNames().Count;
+
                 PdfSigner signer = new PdfSigner(reader, pdfOutStream, new StampingProperties().UseAppendMode());
-                Pkcs12Store pk12 = new Pkcs12Store(new FileStream("D:\\Downloads\\nikko_tinio_signing_cert.p12", FileMode.Open, FileAccess.Read), "TIniosign08@^".ToCharArray());
-                string alias = null;
+                Pkcs12Store pk12 = new Pkcs12Store(certificate.OpenReadStream(), certificatePassword.ToCharArray());
+                string alias = "";
 
                 foreach (var a in pk12.Aliases)
                 {
@@ -132,7 +154,12 @@ namespace pdf_service.Controllers
                 }
 
                 IExternalSignature pks = new PrivateKeySignature(pk, DigestAlgorithms.SHA256);
-                ImageData signatureImage = ImageDataFactory.Create("D:\\Downloads\\sample_sig.bmp");
+
+                Stream signatureImageStream = signatureImage.OpenReadStream();
+                byte[] signatureImageBytes = new byte[file.Length];
+                signatureImageStream.Read(signatureImageBytes, 0, (int)file.Length);
+
+                ImageData signatureImageData = ImageDataFactory.Create(signatureImageBytes);
 
                 if (signatureLocations != null)
                 {
@@ -142,13 +169,13 @@ namespace pdf_service.Controllers
                         PdfSignatureAppearance appearance = signer.GetSignatureAppearance();
 
                         appearance
-                            .SetSignatureGraphic(signatureImage)
+                            .SetSignatureGraphic(signatureImageData)
                             .SetRenderingMode(PdfSignatureAppearance.RenderingMode.GRAPHIC)
                             .SetReason("I approve of this document")
                             .SetPageRect(new Rectangle(signatureLocation.X, signatureLocation.Y, signatureLocation.Width, signatureLocation.Height))
                             .SetPageNumber(signatureLocation.Page + 1);
 
-                        signer.SetFieldName(signatureLocation.SignatureName);
+                        signer.SetFieldName("Signature" + existingSignatureCount++);
 
                         signer.SignDetached(pks, chain, null, null, null, 0, PdfSigner.CryptoStandard.CMS);
                     }
