@@ -28,47 +28,74 @@ namespace pdf_service.Controllers
         {
             if (file == null)
             {
+                _logger.LogError("File missing");
+
                 return BadRequest("File missing");
             }
 
             if (certificate == null)
             {
+                _logger.LogError("Certificate missing");
+
                 return BadRequest("Certificate missing");
             }
 
             if (signatureImage == null)
             {
+                _logger.LogError("Signature Image missing");
+
                 return BadRequest("Signature Image missing");
             }
 
             if (certificatePassword == null)
             {
+                _logger.LogError("Certificate Password missing");
+
                 return BadRequest("Certificate Password missing");
             }
 
             if (scale == null)
             {
+                _logger.LogError("Scale missing");
+
                 return BadRequest("Scale missing");
             }
 
             if (signatures == null)
             {
+                _logger.LogError("Signature(s) missing");
+
                 return BadRequest("Signature(s) missing");
             }
 
             try
             {
                 SignatureLocation[]? signatureLocations = JsonConvert.DeserializeObject<SignatureLocation[]>(signatures);
-                MemoryStream pdfOutStream = new MemoryStream();
+             
                 Stream pdfInStream = file.OpenReadStream();
                 PdfReader reader = new PdfReader(pdfInStream);
-                PdfWriter writer = new PdfWriter(pdfOutStream);
-
-                PdfDocument pdfDoc = new PdfDocument(reader, writer);
+                PdfDocument pdfDoc = new PdfDocument(reader);
                 SignatureUtil signatureUtil = new SignatureUtil(pdfDoc);
                 int existingSignatureCount = 0;
 
                 existingSignatureCount = signatureUtil.GetSignatureNames().Count;
+
+                foreach (SignatureLocation signatureLocation in signatureLocations)
+                {
+                    PdfPage page = pdfDoc.GetPage(signatureLocation.Page);
+
+                    signatureLocation.Y = page.GetPageSize().GetHeight() - signatureLocation.Y - signatureLocation.Height;
+                }
+
+                    pdfDoc.Close();
+                reader.Close();
+                pdfInStream.Close();
+
+                pdfInStream = file.OpenReadStream();
+                reader = new PdfReader(pdfInStream);
+
+                MemoryStream pdfOutStream = new MemoryStream();
+                PdfWriter writer = new PdfWriter(pdfOutStream);
 
                 PdfSigner signer = new PdfSigner(reader, pdfOutStream, new StampingProperties().UseAppendMode());
                 Pkcs12Store pk12 = new Pkcs12Store(certificate.OpenReadStream(), certificatePassword.ToCharArray());
@@ -109,9 +136,9 @@ namespace pdf_service.Controllers
                             .SetRenderingMode(PdfSignatureAppearance.RenderingMode.GRAPHIC)
                             .SetReason("I approve of this document")
                             .SetPageRect(new Rectangle(signatureLocation.X, signatureLocation.Y, signatureLocation.Width, signatureLocation.Height))
-                            .SetPageNumber(signatureLocation.Page + 1);
+                            .SetPageNumber(signatureLocation.Page);
 
-                        signer.SetFieldName("Signature" + existingSignatureCount++);
+                        signer.SetFieldName("Signature" + ++existingSignatureCount);
 
                         signer.SignDetached(pks, chain, null, null, null, 0, PdfSigner.CryptoStandard.CMS);
                     }
