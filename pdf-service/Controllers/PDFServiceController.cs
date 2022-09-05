@@ -165,9 +165,23 @@ namespace pdf_service.Controllers
 
                 return File(pdfBytes, "application/pdf", "result.pdf");
             }
+            catch(IOException e)
+            {
+                if(e.Message == "PKCS12 key store MAC invalid - wrong password or corrupted file.")
+                {
+                    _logger.LogError(e, "Error in signing PDF due to Incorrect Password or Corrupted File");
+
+                    return StatusCode(400, e.Message);
+                } else
+                {
+                    _logger.LogError(e, "Error in signing PDF due to IO error");
+
+                    return StatusCode(400, e.Message);
+                }
+            }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error in signing PDF");
+                _logger.LogError(e, "Error in signing PDF due to system error");
 
                 return StatusCode(500, e.Message);
             }
