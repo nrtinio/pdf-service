@@ -4,6 +4,7 @@ using iText.Kernel.Pdf;
 using iText.Signatures;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Pkcs;
 using Org.BouncyCastle.X509;
@@ -171,12 +172,11 @@ namespace pdf_service.Controllers
                 {
                     _logger.LogError(e, "Error in signing PDF due to Incorrect Password or Corrupted File");
 
-                    return StatusCode(400, e.Message);
+                    return StatusCode(401);
+
                 } else
                 {
-                    _logger.LogError(e, "Error in signing PDF due to IO error");
-
-                    return StatusCode(400, e.Message);
+                    throw e;
                 }
             }
             catch (Exception e)
