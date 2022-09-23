@@ -2,13 +2,17 @@ using iText.IO.Image;
 using iText.Kernel.Geom;
 using iText.Kernel.Pdf;
 using iText.Signatures;
+using iText.Kernel.Pdf.Canvas;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Pkcs;
 using Org.BouncyCastle.X509;
 using pdf_service.Models;
+using iText.Layout.Element;
+using iText.Layout;
+using iText.Kernel.Pdf.Xobject;
+using iText.Kernel.Font;
 
 namespace pdf_service.Controllers
 {
@@ -72,33 +76,12 @@ namespace pdf_service.Controllers
             try
             {
                 SignatureLocation[]? signatureLocations = JsonConvert.DeserializeObject<SignatureLocation[]>(signatures);
-             
-                Stream pdfInStream = file.OpenReadStream();
-                PdfReader reader = new PdfReader(pdfInStream);
-                PdfDocument pdfDoc = new PdfDocument(reader);
-                SignatureUtil signatureUtil = new SignatureUtil(pdfDoc);
-                int existingSignatureCount = 0;
-
-                existingSignatureCount = signatureUtil.GetSignatureNames().Count;
-
-                foreach (SignatureLocation signatureLocation in signatureLocations)
-                {
-                    PdfPage page = pdfDoc.GetPage(signatureLocation.Page);
-
-                    signatureLocation.Y = page.GetPageSize().GetHeight() - signatureLocation.Y - signatureLocation.Height;
-                }
-
-                    pdfDoc.Close();
-                reader.Close();
-                pdfInStream.Close();
-
-                pdfInStream = file.OpenReadStream();
-                //reader = new PdfReader(pdfInStream);
-
+                Array.Sort(signatureLocations, new SignatureComparer());
                 MemoryStream pdfOutStream = new MemoryStream();
-                //PdfWriter writer = new PdfWriter(pdfOutStream);
-
-                //PdfSigner signer = new PdfSigner(reader, pdfOutStream, new StampingProperties().UseAppendMode());
+                Stream signatureImageStream = signatureImage.OpenReadStream();
+                byte[] signatureImageBytes = new byte[file.Length];
+                signatureImageStream.Read(signatureImageBytes, 0, (int)file.Length);
+                ImageData signatureImageData = ImageDataFactory.Create(signatureImageBytes);
                 Pkcs12Store pk12 = new Pkcs12Store(certificate.OpenReadStream(), certificatePassword.ToCharArray());
                 string alias = "";
 
@@ -119,43 +102,10 @@ namespace pdf_service.Controllers
 
                 IExternalSignature pks = new PrivateKeySignature(pk, DigestAlgorithms.SHA256);
 
-                Stream signatureImageStream = signatureImage.OpenReadStream();
-                byte[] signatureImageBytes = new byte[file.Length];
-                signatureImageStream.Read(signatureImageBytes, 0, (int)file.Length);
-
-                ImageData signatureImageData = ImageDataFactory.Create(signatureImageBytes);
-
                 if (signatureLocations != null)
                 {
-                    MemoryStream memoryStream = new MemoryStream();
-                    pdfInStream.CopyTo(memoryStream);
 
-                    pdfOutStream = Sign(memoryStream.ToArray(), pks, chain, signatureLocations, signatureImageData, existingSignatureCount);
-                    //foreach (SignatureLocation signatureLocation in signatureLocations)
-                    //{
-                        //PdfSigner signer = new PdfSigner(reader, pdfOutStream, new StampingProperties().UseAppendMode());
-
-                        //Rectangle rect = new Rectangle(signatureLocation.X, signatureLocation.Y, signatureLocation.Width, signatureLocation.Height);
-                        //PdfSignatureAppearance appearance = signer.GetSignatureAppearance();
-
-                        //appearance
-                        //    .SetSignatureGraphic(signatureImageData)
-                        //    .SetRenderingMode(PdfSignatureAppearance.RenderingMode.GRAPHIC)
-                        //    .SetReason("I approve of this document")
-                        //    .SetPageRect(new Rectangle(signatureLocation.X, signatureLocation.Y, signatureLocation.Width, signatureLocation.Height))
-                        //    .SetPageNumber(signatureLocation.Page);
-
-                        //existingSignatureCount++;
-
-                        //signer.SetFieldName("Signature" + existingSignatureCount);
-
-                        //signer.SignDetached(pks, chain, null, null, null, 0, PdfSigner.CryptoStandard.CMS);
-
-                        //reader.Close();
-
-                        //reader = new PdfReader(pdfOutStream);
-                        //pdfOutStream = new MemoryStream();
-                    //}
+                    pdfOutStream = Sign(file.OpenReadStream(), pks, chain, signatureLocations, signatureImageData);
                 }
                 else
                 {
@@ -163,6 +113,8 @@ namespace pdf_service.Controllers
                 }
 
                 byte[] pdfBytes = pdfOutStream.ToArray();
+
+                pdfOutStream.Close();
 
                 return File(pdfBytes, "application/pdf", "result.pdf");
             }
@@ -187,35 +139,70 @@ namespace pdf_service.Controllers
             }
         }
 
-        private MemoryStream Sign(byte[] pdfBytes, IExternalSignature pks, X509Certificate[] chain, SignatureLocation[] signatureLocations,
-            ImageData signatureImageData, int existingSignatureCount, int signatureIndex = 0)
+        private MemoryStream Sign(Stream fileStream, IExternalSignature pks, X509Certificate[] chain, SignatureLocation[] signatureLocations,
+            ImageData signatureImageData)
         {
-            Stream pdfInStream = new MemoryStream(pdfBytes);
-            PdfReader reader = new PdfReader(pdfInStream);
+            PdfReader reader = new PdfReader(fileStream);
             MemoryStream pdfOutStream = new MemoryStream();
             PdfSigner signer = new PdfSigner(reader, pdfOutStream, new StampingProperties().UseAppendMode());
             PdfSignatureAppearance appearance = signer.GetSignatureAppearance();
+            PdfDocument pdf = signer.GetDocument();
+            SignatureUtil signatureUtil = new SignatureUtil(pdf);
+            int existingSignatureCount = signatureUtil.GetSignatureNames().Count;
 
-            appearance
-                .SetSignatureGraphic(signatureImageData)
-                .SetRenderingMode(PdfSignatureAppearance.RenderingMode.GRAPHIC)
-                .SetReason("I approve of this document")
-                .SetPageRect(new Rectangle(signatureLocations[signatureIndex].X, signatureLocations[signatureIndex].Y,
-                signatureLocations[signatureIndex].Width, signatureLocations[signatureIndex].Height))
-                .SetPageNumber(signatureLocations[signatureIndex].Page);
-
-            signer.SetFieldName("Signature" + existingSignatureCount + 1);
-
-            signer.SignDetached(pks, chain, null, null, null, 0, PdfSigner.CryptoStandard.CMS);
-
-            if(signatureIndex < signatureLocations.Length - 1)
+            for (int i = signatureLocations.Length - 1; i >= 0; i--)
             {
-                return Sign(pdfOutStream.ToArray(), pks, chain, signatureLocations, signatureImageData, existingSignatureCount + 1, signatureIndex + 1);
+                PdfPage page = pdf.GetPage(signatureLocations[i].Page);
+                signatureLocations[i].Y = page.GetPageSize().GetHeight() - signatureLocations[i].Y - signatureLocations[i].Height;
 
-            } else
-            {
-                return pdfOutStream;
+                appearance
+                    .SetSignatureGraphic(signatureImageData)
+                    .SetRenderingMode(PdfSignatureAppearance.RenderingMode.GRAPHIC_AND_DESCRIPTION)
+                    .SetLocation("Manila")
+                    .SetReason("I approve of this document")
+                    .SetPageRect(new Rectangle(signatureLocations[i].X, signatureLocations[i].Y,
+                    signatureLocations[i].Width, signatureLocations[i].Height))
+                    .SetPageNumber(signatureLocations[i].Page);
+
+                if (i == 0)
+                {
+                    signer.SetFieldName("Signature" + existingSignatureCount + 1);
+
+                    signer.SignDetached(pks, chain, null, null, null, 0, PdfSigner.CryptoStandard.CMS);
+                } else
+                {
+                    PdfCanvas pdfCanvas = new PdfCanvas(page);
+                    Rectangle rect = new Rectangle(signatureLocations[i].X, signatureLocations[i].Y, signatureLocations[i].Width, signatureLocations[i].Height);
+                    pdfCanvas.Rectangle(rect);
+
+                    Rectangle sigRect = new Rectangle(signatureLocations[i].X, signatureLocations[i].Y, signatureLocations[i].Width / 2, signatureLocations[i].Height);
+                    Canvas sigCanvas = new Canvas(pdfCanvas, sigRect);
+                    Image sigImage = new Image(signatureImageData);
+                    sigImage.SetAutoScale(true);
+                    Div imageDiv = new Div();
+                    imageDiv.SetHeight(sigRect.GetHeight());
+                    imageDiv.SetWidth(sigRect.GetWidth());
+                    imageDiv.SetVerticalAlignment(iText.Layout.Properties.VerticalAlignment.MIDDLE);
+                    imageDiv.SetHorizontalAlignment(iText.Layout.Properties.HorizontalAlignment.CENTER);
+                    imageDiv.Add(sigImage);
+                    sigCanvas.Add(imageDiv);
+
+                    Rectangle textRect = new Rectangle(signatureLocations[i].X + sigRect.GetWidth(), signatureLocations[i].Y, signatureLocations[i].Width / 2, signatureLocations[i].Height);
+                    Canvas textCanvas = new Canvas(pdfCanvas, textRect);
+                    PdfFont font = PdfFontFactory.CreateFont();
+                    Paragraph paragraph = new Paragraph("Digitally signed by Nikko\nDate: mm/dd/yyyy\nReason: I do not approve of this document\nLocation: At Home")
+                        .SetFont(font).SetMargin(0).SetMultipliedLeading(0.9f).SetFontSize(10);
+                    Div textDiv = new Div();
+                    textDiv.SetHeight(textRect.GetHeight());
+                    textDiv.SetWidth(textRect.GetWidth());
+                    textDiv.SetVerticalAlignment(iText.Layout.Properties.VerticalAlignment.MIDDLE);
+                    textDiv.SetHorizontalAlignment(iText.Layout.Properties.HorizontalAlignment.CENTER);
+                    textDiv.Add(paragraph);
+                    textCanvas.Add(textDiv);
+                }
             }
+
+            return pdfOutStream;
         }
     }
 }
