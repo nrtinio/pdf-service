@@ -29,7 +29,7 @@ namespace pdf_service.Controllers
 
         [HttpPost("SignPdf")]
         public IActionResult SignPdf(IFormFile? file, IFormFile? certificate, IFormFile? signatureImage,
-            [FromForm] string? certificatePassword, [FromForm] int? scale, [FromForm] string? signatures)
+            [FromForm] string? certificatePassword, [FromForm] string? signatures)
         {
             if (file == null)
             {
@@ -59,24 +59,8 @@ namespace pdf_service.Controllers
                 return BadRequest("Certificate Password missing");
             }
 
-            if (scale == null)
-            {
-                _logger.LogError("Scale missing");
-
-                return BadRequest("Scale missing");
-            }
-
-            if (signatures == null)
-            {
-                _logger.LogError("Signature(s) missing");
-
-                return BadRequest("Signature(s) missing");
-            }
-
             try
             {
-                SignatureLocation[]? signatureLocations = JsonConvert.DeserializeObject<SignatureLocation[]>(signatures);
-                Array.Sort(signatureLocations, new SignatureComparer());
                 MemoryStream pdfOutStream = new MemoryStream();
                 Stream signatureImageStream = signatureImage.OpenReadStream();
                 byte[] signatureImageBytes = new byte[file.Length];
@@ -102,15 +86,7 @@ namespace pdf_service.Controllers
 
                 IExternalSignature pks = new PrivateKeySignature(pk, DigestAlgorithms.SHA256);
 
-                if (signatureLocations != null)
-                {
-
-                    pdfOutStream = Sign(file.OpenReadStream(), pks, chain, signatureLocations, signatureImageData);
-                }
-                else
-                {
-                    return BadRequest("No signature found");
-                }
+                pdfOutStream = Sign(file.OpenReadStream(), pks, chain, signatureImageData);
 
                 byte[] pdfBytes = pdfOutStream.ToArray();
 
@@ -139,7 +115,7 @@ namespace pdf_service.Controllers
             }
         }
 
-        private MemoryStream Sign(Stream fileStream, IExternalSignature pks, X509Certificate[] chain, SignatureLocation[] signatureLocations,
+        private MemoryStream Sign(Stream fileStream, IExternalSignature pks, X509Certificate[] chain,
             ImageData signatureImageData)
         {
             PdfReader reader = new PdfReader(fileStream);
@@ -147,60 +123,23 @@ namespace pdf_service.Controllers
             PdfSigner signer = new PdfSigner(reader, pdfOutStream, new StampingProperties().UseAppendMode());
             PdfSignatureAppearance appearance = signer.GetSignatureAppearance();
             PdfDocument pdf = signer.GetDocument();
-            SignatureUtil signatureUtil = new SignatureUtil(pdf);
-            int existingSignatureCount = signatureUtil.GetSignatureNames().Count;
 
-            for (int i = signatureLocations.Length - 1; i >= 0; i--)
-            {
-                PdfPage page = pdf.GetPage(signatureLocations[i].Page);
-                signatureLocations[i].Y = page.GetPageSize().GetHeight() - signatureLocations[i].Y - signatureLocations[i].Height;
+            PdfPage page = pdf.GetPage(1);
 
-                appearance
+            appearance
                     .SetSignatureGraphic(signatureImageData)
                     .SetRenderingMode(PdfSignatureAppearance.RenderingMode.GRAPHIC_AND_DESCRIPTION)
-                    .SetLocation("Manila")
-                    .SetReason("I approve of this document")
-                    .SetPageRect(new Rectangle(signatureLocations[i].X, signatureLocations[i].Y,
-                    signatureLocations[i].Width, signatureLocations[i].Height))
-                    .SetPageNumber(signatureLocations[i].Page);
+                    .SetLocationCaption("")
+                    .SetReasonCaption("")
+                    //.SetLocation("Manila")
+                    //.SetReason("I approve of this document")
+                    .SetPageRect(new Rectangle(page.GetPageSize().GetWidth() - 200, 0,
+                    200, 100))
+                    .SetPageNumber(1);
 
-                if (i == 0)
-                {
-                    signer.SetFieldName("Signature" + existingSignatureCount + 1);
+            signer.SetFieldName("Signature0");
 
-                    signer.SignDetached(pks, chain, null, null, null, 0, PdfSigner.CryptoStandard.CMS);
-                } else
-                {
-                    PdfCanvas pdfCanvas = new PdfCanvas(page);
-                    Rectangle rect = new Rectangle(signatureLocations[i].X, signatureLocations[i].Y, signatureLocations[i].Width, signatureLocations[i].Height);
-                    pdfCanvas.Rectangle(rect);
-
-                    Rectangle sigRect = new Rectangle(signatureLocations[i].X, signatureLocations[i].Y, signatureLocations[i].Width / 2, signatureLocations[i].Height);
-                    Canvas sigCanvas = new Canvas(pdfCanvas, sigRect);
-                    Image sigImage = new Image(signatureImageData);
-                    sigImage.SetAutoScale(true);
-                    Div imageDiv = new Div();
-                    imageDiv.SetHeight(sigRect.GetHeight());
-                    imageDiv.SetWidth(sigRect.GetWidth());
-                    imageDiv.SetVerticalAlignment(iText.Layout.Properties.VerticalAlignment.MIDDLE);
-                    imageDiv.SetHorizontalAlignment(iText.Layout.Properties.HorizontalAlignment.CENTER);
-                    imageDiv.Add(sigImage);
-                    sigCanvas.Add(imageDiv);
-
-                    Rectangle textRect = new Rectangle(signatureLocations[i].X + sigRect.GetWidth(), signatureLocations[i].Y, signatureLocations[i].Width / 2, signatureLocations[i].Height);
-                    Canvas textCanvas = new Canvas(pdfCanvas, textRect);
-                    PdfFont font = PdfFontFactory.CreateFont();
-                    Paragraph paragraph = new Paragraph("Digitally signed by Nikko\nDate: mm/dd/yyyy\nReason: I do not approve of this document\nLocation: At Home")
-                        .SetFont(font).SetMargin(0).SetMultipliedLeading(0.9f).SetFontSize(10);
-                    Div textDiv = new Div();
-                    textDiv.SetHeight(textRect.GetHeight());
-                    textDiv.SetWidth(textRect.GetWidth());
-                    textDiv.SetVerticalAlignment(iText.Layout.Properties.VerticalAlignment.MIDDLE);
-                    textDiv.SetHorizontalAlignment(iText.Layout.Properties.HorizontalAlignment.CENTER);
-                    textDiv.Add(paragraph);
-                    textCanvas.Add(textDiv);
-                }
-            }
+            signer.SignDetached(pks, chain, null, null, null, 0, PdfSigner.CryptoStandard.CMS);
 
             return pdfOutStream;
         }
